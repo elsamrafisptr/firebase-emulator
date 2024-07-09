@@ -19,7 +19,7 @@ import {
   HeaderIcon,
   HeaderBar,
   ModalDialog,
-  CartList
+  CartList,
 } from "./view.js";
 
 export async function onDocumentReady(firebaseApp) {
@@ -27,6 +27,12 @@ export async function onDocumentReady(firebaseApp) {
 
   const auth = firebaseApp.auth();
   const db = firebaseApp.firestore();
+
+  if (location.hostname === "127.0.0.1") {
+    console.log("127.0.0.1 detected!");
+    auth.useEmulator("http://127.0.0.1:9099");
+    db.useEmulator("127.0.0.1", 8080);
+  }
 
   const homePage = new HomePage(db, auth);
   mount(document.body, homePage);
@@ -53,7 +59,7 @@ class HomePage {
       }),
       new HeaderIcon("cart", "shopping_cart", "N/A", () => {
         this.showCart();
-      })
+      }),
     ]);
 
     this.itemCardList = new ItemCardList(async (id, data) => {
@@ -70,7 +76,7 @@ class HomePage {
     this.el = el("div.header-page", [
       this.headerBar,
       this.itemCardList,
-      this.modalDialog
+      this.modalDialog,
     ]);
 
     this.listenForAuth();
@@ -78,7 +84,7 @@ class HomePage {
   }
 
   listenForAuth() {
-    this.auth.onAuthStateChanged(user => {
+    this.auth.onAuthStateChanged((user) => {
       console.log(`auth.currentUser = ${JSON.stringify(user)}`);
       const signedIn = user !== null;
       this.setSignedIn(signedIn);
@@ -86,9 +92,11 @@ class HomePage {
   }
 
   listenForItems() {
-    this.db.collection("items").onSnapshot(items => {
+    this.db.collection("items").onSnapshot((items) => {
       if (items.size === 0) {
-        console.warn("No items in the database ... did you remember to start the emulators with --import?");
+        console.warn(
+          "No items in the database ... did you remember to start the emulators with --import?"
+        );
       }
 
       this.itemCardList.setItems(items);
@@ -98,8 +106,6 @@ class HomePage {
   async listenForCart(uid) {
     console.log(`listenForCart(${uid})`);
 
-    // If we were previously listening to the cart for
-    // a different user, unsubscribe.
     if (this.cartItemsUnsub) {
       this.cartItemsUnsub();
       this.cartItemsUnsub = null;
@@ -109,14 +115,12 @@ class HomePage {
     const cartRef = this.db.collection("carts").doc(uid);
     await cartRef.set(
       {
-        ownerUID: uid
+        ownerUID: uid,
       },
       { merge: true }
     );
 
-    // Listen for updates to the cart
-    // TODO: Unsub from this as well
-    this.cartUnsub = cartRef.onSnapshot(cart => {
+    this.cartUnsub = cartRef.onSnapshot((cart) => {
       console.log("cart", cart.data());
 
       const total = cart.data().totalPrice || 0;
@@ -124,8 +128,7 @@ class HomePage {
       this.headerBar.setIconText("cart", `\$${total.toFixed(2)} (${count})`);
     });
 
-    // Listen for updates to cart items
-    this.cartItemsUnsub = cartRef.collection("items").onSnapshot(items => {
+    this.cartItemsUnsub = cartRef.collection("items").onSnapshot((items) => {
       this.setCartItems(items);
     });
   }
@@ -155,21 +158,25 @@ class HomePage {
     let itemIds;
 
     if (items) {
-      this.cartItems = items.docs.map(doc => doc.data());
-      itemIds = items.docs.map(doc => doc.id);
+      this.cartItems = items.docs.map((doc) => doc.data());
+      itemIds = items.docs.map((doc) => doc.id);
     } else {
       this.cartItems = [];
       itemIds = [];
     }
 
-    // For any item in the cart, we disable the add button
-    this.itemCardList.getAll().forEach(itemCard => {
+    this.itemCardList.getAll().forEach((itemCard) => {
       const inCart = itemIds.indexOf(itemCard.id) >= 0;
       itemCard.setAddEnabled(!inCart);
     });
   }
 
   addToCart(id, itemData) {
+    if (this.auth.currentUser === null) {
+      this.showError("You must be signed in!");
+      return;
+    }
+
     console.log("addToCart", id, JSON.stringify(itemData));
     return this.db
       .collection("carts")
@@ -184,7 +191,7 @@ class HomePage {
       return;
     }
 
-    const items = this.cartItems.map(doc => `${doc.name} - ${doc.price}`);
+    const items = this.cartItems.map((doc) => `${doc.name} - ${doc.price}`);
     this.modalDialog.setContent(new CartList(items));
     this.modalDialog.show();
   }
